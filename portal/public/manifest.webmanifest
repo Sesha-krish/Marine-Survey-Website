@@ -1,0 +1,13 @@
+{
+  "name": "Marine Survey Portal — Surveyor",
+  "short_name": "Surveyor",
+  "description": "Accept assignments and capture marine surveys, even offline.",
+  "start_url": "/s",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b2545",
+  "theme_color": "#0b2545",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

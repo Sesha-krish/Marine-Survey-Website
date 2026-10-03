@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens — deep navy primary, teal accent, slate neutrals. 8px grid, 8px radii. */
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --surface-3: #e8edf3;
+  --border: #dfe5ec;
+  --border-strong: #c5cfdb;
+  --text: #0f172a;
+  --muted: #475569;
+  --subtle: #64748b;
+  --primary: #0b2545;
+  --primary-hover: #13315c;
+  --primary-fg: #ffffff;
+  --accent: #2a9d8f;
+  --accent-strong: #1d7268; /* teal that passes 4.5:1 as text on white */
+  --accent-soft: #e3f4f1;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warning: #9a6700;
+  --warning-soft: #fff4d6;
+  --success: #1a7f37;
+  --success-soft: #e6f4ea;
+  --ring: #2a9d8f;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 2px 8px rgb(15 23 42 / 0.05);
+  --shadow-lg: 0 4px 12px rgb(15 23 42 / 0.08), 0 16px 40px rgb(15 23 42 / 0.12);
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #07111d;
+  --surface: #0d1a2b;
+  --surface-2: #122236;
+  --surface-3: #183049;
+  --border: #1e3350;
+  --border-strong: #2c4668;
+  --text: #e6edf5;
+  --muted: #a3b3c6;
+  --subtle: #8597ad;
+  --primary: #3d7bd9;
+  --primary-hover: #5590e6;
+  --primary-fg: #ffffff;
+  --accent: #3cc2b1;
+  --accent-strong: #5fd6c6;
+  --accent-soft: #0f3330;
+  --danger: #ff8a80;
+  --danger-soft: #3a1513;
+  --warning: #f5c451;
+  --warning-soft: #33280b;
+  --success: #6fd38b;
+  --success-soft: #0f2c19;
+  --ring: #3cc2b1;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.25);
+  --shadow-lg: 0 4px 12px rgb(0 0 0 / 0.4), 0 16px 40px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-ring: var(--ring);
+  --shadow-card: var(--shadow);
+  --shadow-pop: var(--shadow-lg);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus everywhere (WCAG 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Status pill tones — text/background pairs meet 4.5:1 in both themes */
+.tone-slate { background: #eef2f6; color: #334155; }
+.tone-zinc { background: #f0f0f2; color: #3f3f46; }
+.tone-blue { background: #e6f0fd; color: #0b4fa8; }
+.tone-teal { background: #dff5f1; color: #0f5e55; }
+.tone-indigo { background: #ebebfd; color: #3730a3; }
+.tone-amber { background: #fff3d6; color: #7a4d00; }
+.tone-violet { background: #f1eafd; color: #5b21b6; }
+.tone-green { background: #e3f5e8; color: #14622c; }
+.tone-red { background: #fde8e7; color: #a01b12; }
+.dark .tone-slate { background: #1f2c3d; color: #cbd5e1; }
+.dark .tone-zinc { background: #26262b; color: #d4d4d8; }
+.dark .tone-blue { background: #0f2747; color: #93c0fb; }
+.dark .tone-teal { background: #0c322d; color: #7fe0d2; }
+.dark .tone-indigo { background: #1e1f4d; color: #b4b6fb; }
+.dark .tone-amber { background: #3a2a06; color: #f7cd6b; }
+.dark .tone-violet { background: #2a1748; color: #cdb4fb; }
+.dark .tone-green { background: #0f3019; color: #86e0a0; }
+.dark .tone-red { background: #3f1210; color: #ffaba4; }
+
+/* Print: reports render as clean A4 documents */
+@media print {
+  @page { size: A4; margin: 14mm; }
+  .no-print { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  .print-page { box-shadow: none !important; border: 0 !important; margin: 0 !important; max-width: none !important; }
+  .print-break { break-before: page; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* Grid/flex children may shrink below their content width — prevents page-level horizontal scroll
+   when a child contains an overflow-x scroller (tables, step strips, chip rows). */
+@layer base {
+  .grid > *,
+  main {
+    min-width: 0;
+  }
+  /* Absolutely-positioned descendants (e.g. sr-only labels) must not escape a scroller and widen the page. */
+  .overflow-x-auto {
+    position: relative;
+  }
+}

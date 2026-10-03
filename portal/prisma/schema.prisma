@@ -1,0 +1,710 @@
+// Marine Survey Portal — domain model.
+// Dev uses SQLite; for production switch `provider` to "postgresql" (all types are portable).
+// Status/enum-like fields are plain strings validated by the constants in src/lib/constants.ts,
+// so the schema works identically on SQLite and Postgres.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Tenancy & identity ─────────────────────────────
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String
+  kind            String // VENDOR | REQUESTER | PLATFORM
+  gstin           String?
+  email           String?
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  country         String   @default("IN")
+  homeCurrency    String   @default("INR")
+  creditBalance   Int      @default(0)
+  lowCreditAlert  Int      @default(5)
+  autoRenew       Boolean  @default(false)
+  autoRenewPkgId  String?
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  users         User[]
+  customers     Customer[]
+  surveyors     Surveyor[]
+  rfqs          Rfq[]
+  jobOrders     JobOrder[]
+  invoices      Invoice[]
+  ledger        CreditLedger[]
+  purchases     Purchase[]
+  tickets       SupportTicket[]
+  letterheads   Letterhead[]
+  agents        Agent[]
+  rateOverrides RateOverride[]
+  reports       Report[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  email        String    @unique
+  passwordHash String
+  role         String // PLATFORM_ADMIN | VENDOR_ADMIN | VENDOR_STAFF | SURVEYOR | REQUESTER
+  firstName    String
+  middleName   String?
+  lastName     String?
+  phone        String?
+  active       Boolean   @default(true)
+  totpSecret   String?
+  totpEnabled  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  sessions      Session[]
+  notifications Notification[]
+  surveyor      Surveyor?
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  userAgent String?
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model Counter {
+  key   String @id // e.g. "RFQ-2026"
+  value Int    @default(0)
+}
+
+model LegacyIdMap {
+  id         String @id @default(cuid())
+  entityType String
+  legacyId   String @unique
+  newId      String
+}
+
+// ───────────────────────────── Masters ─────────────────────────────
+
+model Customer {
+  id               String   @id @default(cuid())
+  orgId            String
+  org              Organization @relation(fields: [orgId], references: [id])
+  customerType     String // ENTERPRISE | INDIVIDUAL
+  organizationName String?
+  firstName        String?
+  middleName       String?
+  lastName         String?
+  taxId            String?
+  licenseNumber    String?
+  email            String
+  phone            String // E.164
+  address1         String
+  address2         String?
+  country          String // ISO 3166 alpha-2
+  state            String
+  city             String
+  active           Boolean  @default(true)
+  isDemo           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  rfqs     Rfq[]
+  invoices Invoice[]
+
+  @@index([orgId, active])
+}
+
+model Agent {
+  id          String   @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  companyName String
+  email       String
+  phone       String
+  address     String
+  createdAt   DateTime @default(now())
+
+  contacts AgentContact[]
+  rfqs     Rfq[]
+
+  @@index([orgId, companyName])
+}
+
+model AgentContact {
+  id      String @id @default(cuid())
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name    String
+  phone   String?
+  email   String?
+}
+
+model Surveyor {
+  id            String   @id @default(cuid())
+  // null orgId + INDEPENDENT = marketplace surveyor visible to every vendor
+  orgId         String?
+  org           Organization? @relation(fields: [orgId], references: [id])
+  userId        String?  @unique
+  user          User?    @relation(fields: [userId], references: [id])
+  kind          String // IN_HOUSE | INDEPENDENT
+  name          String
+  email         String
+  phone         String
+  availability  String   @default("AVAILABLE") // AVAILABLE | BUSY | ON_LEAVE | INACTIVE
+  baseLocation  String?
+  coverage      String? // comma-separated ports / cities
+  rating        Float    @default(0)
+  notes         String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  capabilities SurveyorCapability[]
+  rates        SurveyorRate[]
+  documents    SurveyorDocument[]
+  assignments  Assignment[]
+}
+
+model SurveyorCapability {
+  id           String     @id @default(cuid())
+  surveyorId   String
+  surveyor     Surveyor   @relation(fields: [surveyorId], references: [id], onDelete: Cascade)
+  surveyTypeId String
+  surveyType   SurveyType @relation(fields: [surveyTypeId], references: [id])
+
+  @@unique([surveyorId, surveyTypeId])
+}
+
+model SurveyorRate {
+  id            String     @id @default(cuid())
+  surveyorId    String
+  surveyor      Surveyor   @relation(fields: [surveyorId], references: [id], onDelete: Cascade)
+  surveyTypeId  String
+  surveyType    SurveyType @relation(fields: [surveyTypeId], references: [id])
+  location      String
+  amount        Float
+  currency      String     @default("INR")
+  effectiveFrom DateTime   @default(now())
+}
+
+model SurveyorDocument {
+  id           String    @id @default(cuid())
+  surveyorId   String
+  surveyor     Surveyor  @relation(fields: [surveyorId], references: [id], onDelete: Cascade)
+  docType      String // PAN | AADHAAR | PASSPORT | LICENSE | CERTIFICATE | OTHER
+  docNumber    String
+  expiresAt    DateTime?
+  attachmentId String?
+  status       String    @default("PENDING") // PENDING | VERIFIED | REJECTED
+  reviewerId   String?
+  reviewedAt   DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+// ───────────────────────────── Taxonomy & templates ─────────────────────────────
+
+model SurveyCategory {
+  id            String              @id @default(cuid())
+  name          String              @unique
+  sortOrder     Int                 @default(0)
+  subCategories SurveySubCategory[]
+}
+
+model SurveySubCategory {
+  id            String         @id @default(cuid())
+  categoryId    String
+  category      SurveyCategory @relation(fields: [categoryId], references: [id])
+  name          String
+  quantityLabel String         @default("Quantity")
+  sortOrder     Int            @default(0)
+  types         SurveyType[]
+}
+
+model SurveyType {
+  id            String            @id @default(cuid())
+  subCategoryId String
+  subCategory   SurveySubCategory @relation(fields: [subCategoryId], references: [id])
+  code          String            @unique // COC, TS, TU, FB, FRL, OT, PDL, PDS, DRS ...
+  name          String
+  creditCost    Int               @default(1)
+  hint          String?
+  active        Boolean           @default(true)
+  sortOrder     Int               @default(0)
+
+  scopeItems   ScopeItem[]
+  templates    SurveyTemplate[]
+  rfqLines     RfqLine[]
+  jobOrders    JobOrder[]
+  capabilities SurveyorCapability[]
+  rates        SurveyorRate[]
+  overrides    RateOverride[]
+}
+
+model ScopeItem {
+  id           String     @id @default(cuid())
+  surveyTypeId String
+  surveyType   SurveyType @relation(fields: [surveyTypeId], references: [id], onDelete: Cascade)
+  text         String
+  sortOrder    Int        @default(0)
+}
+
+model RateOverride {
+  id           String       @id @default(cuid())
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  surveyTypeId String
+  surveyType   SurveyType   @relation(fields: [surveyTypeId], references: [id])
+  creditCost   Int
+
+  @@unique([orgId, surveyTypeId])
+}
+
+model SurveyTemplate {
+  id           String     @id @default(cuid())
+  surveyTypeId String
+  surveyType   SurveyType @relation(fields: [surveyTypeId], references: [id])
+  version      Int
+  name         String
+  schema       String // JSON — see src/lib/templates/types.ts
+  published    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  surveys Survey[]
+
+  @@unique([surveyTypeId, version])
+}
+
+// ───────────────────────────── RFQ workflow ─────────────────────────────
+
+model Rfq {
+  id                String    @id @default(cuid())
+  number            String    @unique // RFQ-2026-00001
+  legacyNumber      String?
+  orgId             String
+  org               Organization @relation(fields: [orgId], references: [id])
+  customerId        String
+  customer          Customer  @relation(fields: [customerId], references: [id])
+  status            String    @default("NEW") // NEW | ACCEPTED | ASSIGNED | IN_PROGRESS | COMPLETED | DECLINED | CANCELLED
+  // Intake
+  requestSource     String    @default("PHONE") // PHONE | EMAIL | WHATSAPP | WEBSITE | OTHER
+  requestReceivedAt DateTime  @default(now())
+  contactPerson     String?
+  contactDetails    String?
+  initialNotes      String?
+  // Cargo
+  cargoName         String?
+  cargoQuantity     String?
+  // Survey details
+  surveyArea        String // YARD | CFS | TERMINAL | FACTORY | VESSEL
+  areaName          String
+  locationName      String
+  lat               Float?
+  lng               Float?
+  surveyDate        DateTime
+  currency          String    @default("INR")
+  estimatedRate     Float
+  paymentTerms      String
+  actingOnBehalfOf  String?
+  piClub            String?
+  jointInspection   Boolean   @default(false)
+  // Agent snapshot (master in Agent)
+  agentId           String?
+  agent             Agent?    @relation(fields: [agentId], references: [id])
+  agentCompanyName  String?
+  agentEmail        String?
+  agentPhone        String?
+  agentAddress      String?
+  creditsCharged    Int       @default(0)
+  declineReason     String?
+  createdById       String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  isDemo            Boolean   @default(false)
+
+  lines           RfqLine[]
+  jointInspectors RfqJointInspector[]
+  agentContacts   RfqAgentContact[]
+  jobOrders       JobOrder[]
+  attachments     Attachment[]
+  invoices        Invoice[]
+
+  @@index([orgId, status])
+  @@index([orgId, createdAt])
+}
+
+model RfqLine {
+  id           String     @id @default(cuid())
+  rfqId        String
+  rfq          Rfq        @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  surveyTypeId String
+  surveyType   SurveyType @relation(fields: [surveyTypeId], references: [id])
+  quantity     Int
+  scope        String // JSON array of scope strings
+  scopeOther   String?
+
+  jobOrders JobOrder[]
+}
+
+model RfqJointInspector {
+  id         String @id @default(cuid())
+  rfqId      String
+  rfq        Rfq    @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  name       String
+  onBehalfOf String
+  role       String
+}
+
+model RfqAgentContact {
+  id    String  @id @default(cuid())
+  rfqId String
+  rfq   Rfq     @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  name  String
+  phone String?
+  email String?
+}
+
+model RfqDraft {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  step      Int      @default(0)
+  data      String // JSON of wizard state
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([orgId, userId])
+}
+
+model JobOrder {
+  id              String     @id @default(cuid())
+  number          String     @unique // JOB-2026-00001
+  legacyNumber    String?
+  orgId           String
+  org             Organization @relation(fields: [orgId], references: [id])
+  rfqId           String
+  rfq             Rfq        @relation(fields: [rfqId], references: [id])
+  rfqLineId       String?
+  rfqLine         RfqLine?   @relation(fields: [rfqLineId], references: [id])
+  surveyTypeId    String
+  surveyType      SurveyType @relation(fields: [surveyTypeId], references: [id])
+  containerNumber String?
+  location        String
+  surveyDate      DateTime
+  status          String     @default("NEW") // NEW | ASSIGNED | IN_PROGRESS | SUBMITTED | COMPLETED | CANCELLED
+  bulkVerdict     String? // FIT | UNFIT (Bulk Survey grid)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  assignments  Assignment[]
+  survey       Survey?
+  invoiceLines InvoiceLine[]
+
+  @@index([orgId, status])
+  @@index([rfqId])
+}
+
+// A job can have many historical assignments; rejected ones are immutable history.
+model Assignment {
+  id              String    @id @default(cuid())
+  number          String    @unique // ASN-2026-00001
+  jobOrderId      String
+  jobOrder        JobOrder  @relation(fields: [jobOrderId], references: [id])
+  surveyorId      String
+  surveyor        Surveyor  @relation(fields: [surveyorId], references: [id])
+  status          String    @default("NEW") // NEW | ACCEPTED | IN_PROGRESS | COMPLETED | REJECTED | CANCELLED
+  isLead          Boolean   @default(true) // joint inspection: one lead, others support
+  fee             Float?
+  instructions    String?
+  rejectionReason String?
+  assignedById    String
+  assignedAt      DateTime  @default(now())
+  respondedAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  previousId      String? // the rejected assignment this one replaced
+
+  @@index([surveyorId, status])
+  @@index([jobOrderId])
+}
+
+model Survey {
+  id              String         @id @default(cuid())
+  number          String         @unique // SVY-2026-00001
+  jobOrderId      String         @unique
+  jobOrder        JobOrder       @relation(fields: [jobOrderId], references: [id])
+  templateId      String
+  template        SurveyTemplate @relation(fields: [templateId], references: [id])
+  surveyorId      String?
+  status          String         @default("NOT_STARTED") // NOT_STARTED | IN_PROGRESS | SUBMITTED | COMPLETED
+  answers         String         @default("{}") // JSON keyed by field id
+  verdict         String? // FIT | UNFIT
+  verdictReason   String?
+  completionNotes String?
+  revision        Int            @default(0) // optimistic concurrency for offline sync
+  startedAt       DateTime?
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  photos  SurveyPhoto[]
+  reports Report[]
+}
+
+model SurveyPhoto {
+  id           String   @id @default(cuid())
+  surveyId     String
+  survey       Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  slot         String
+  attachmentId String
+  takenAt      DateTime
+  lat          Float?
+  lng          Float?
+  createdAt    DateTime @default(now())
+
+  @@index([surveyId, slot])
+}
+
+// ───────────────────────────── Reports (immutable versions) ─────────────────────────────
+
+model Report {
+  id             String    @id @default(cuid())
+  number         String    @unique // RPT-2026-00001
+  orgId          String
+  org            Organization @relation(fields: [orgId], references: [id])
+  surveyId       String
+  survey         Survey    @relation(fields: [surveyId], references: [id])
+  stage          String // CERTIFICATE | PRELIMINARY | COMPLETION | FORMAL | SIGNED
+  status         String    @default("GENERATED") // NOT_GENERATED | GENERATED | UNDER_REVIEW | ISSUED | AMENDED | REISSUED
+  currentVersion Int       @default(1)
+  letterheadId   String?
+  issuedAt       DateTime?
+  sentAt         DateTime?
+  sentTo         String?
+  createdAt      DateTime  @default(now())
+
+  versions ReportVersion[]
+
+  @@unique([surveyId, stage])
+}
+
+model ReportVersion {
+  id          String   @id @default(cuid())
+  reportId    String
+  report      Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  version     Int
+  snapshot    String // JSON: frozen survey answers + header data at generation time
+  narrative   String? // optional narrative section (plain text, never HTML)
+  reason      String? // why this version exists (amendment reason)
+  createdById String
+  createdAt   DateTime @default(now())
+  locked      Boolean  @default(false)
+
+  @@unique([reportId, version])
+}
+
+model Letterhead {
+  id           String   @id @default(cuid())
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  attachmentId String
+  version      Int
+  active       Boolean  @default(false)
+  createdById  String
+  createdAt    DateTime @default(now())
+}
+
+// ───────────────────────────── Files ─────────────────────────────
+
+model Attachment {
+  id           String   @id @default(cuid())
+  orgId        String
+  rfqId        String?
+  rfq          Rfq?     @relation(fields: [rfqId], references: [id])
+  kind         String // APPOINTMENT_LETTER | BOOKING_CONFIRMATION | PURCHASE_ORDER | OTHER | PHOTO | KYC | LETTERHEAD | SIGNATURE | TICKET
+  fileName     String
+  mimeType     String
+  size         Int
+  storageKey   String
+  uploadedById String
+  createdAt    DateTime @default(now())
+}
+
+// ───────────────────────────── Billing ─────────────────────────────
+
+model Invoice {
+  id            String   @id @default(cuid())
+  number        String   @unique // INV-2026-00001
+  orgId         String
+  org           Organization @relation(fields: [orgId], references: [id])
+  rfqId         String
+  rfq           Rfq      @relation(fields: [rfqId], references: [id])
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  issueDate     DateTime @default(now())
+  dueDate       DateTime
+  currency      String
+  supplierGstin String?
+  customerGstin String?
+  placeOfSupply String? // state name; intra-state → CGST+SGST, else IGST
+  taxMode       String   @default("IGST") // CGST_SGST | IGST | NONE
+  subtotal      Float
+  cgst          Float    @default(0)
+  sgst          Float    @default(0)
+  igst          Float    @default(0)
+  total         Float
+  amountPaid    Float    @default(0)
+  status        String   @default("DRAFT") // DRAFT | SENT | PARTIALLY_PAID | PAID | OVERDUE | CANCELLED
+  notes         String?
+  sentAt        DateTime?
+  createdById   String
+  createdAt     DateTime @default(now())
+
+  lines    InvoiceLine[]
+  payments Payment[]
+}
+
+model InvoiceLine {
+  id          String    @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  jobOrderId  String?
+  jobOrder    JobOrder? @relation(fields: [jobOrderId], references: [id])
+  description String
+  sac         String    @default("998346") // SAC: technical testing & analysis services
+  quantity    Float
+  unitPrice   Float
+  taxRate     Float     @default(18)
+  amount      Float
+}
+
+model Payment {
+  id           String   @id @default(cuid())
+  invoiceId    String
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount       Float
+  mode         String // BANK_TRANSFER | UPI | CASH | CHEQUE | CARD
+  reference    String
+  paidAt       DateTime
+  recordedById String
+  createdAt    DateTime @default(now())
+}
+
+model Package {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  price        Float
+  currency     String   @default("INR")
+  credits      Int
+  validityDays Int
+  active       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+
+  purchases Purchase[]
+}
+
+model Purchase {
+  id          String   @id @default(cuid())
+  number      String   @unique // PUR-2026-00001
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  packageId   String
+  package     Package  @relation(fields: [packageId], references: [id])
+  price       Float
+  credits     Int
+  purchasedAt DateTime @default(now())
+  expiresAt   DateTime
+  status      String   @default("ACTIVE") // PENDING | ACTIVE | EXPIRED | FAILED
+  paymentRef  String?
+  createdById String
+}
+
+model CreditLedger {
+  id           String   @id @default(cuid())
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  delta        Int
+  reason       String // PURCHASE | RFQ_CREATED | RFQ_REFUND | ADJUSTMENT | EXPIRY
+  balanceAfter Int
+  refType      String?
+  refId        String?
+  actorId      String?
+  createdAt    DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+// ───────────────────────────── Support, notifications, audit ─────────────────────────────
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  number      String   @unique // TKT-2026-00001
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  topic       String
+  priority    String // LOW | MEDIUM | HIGH | URGENT
+  supportType String // TECHNICAL | BILLING | ACCOUNT | MARKETING | OTHER
+  description String
+  status      String   @default("OPEN") // OPEN | IN_PROGRESS | WAITING_ON_CUSTOMER | RESOLVED | CLOSED
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  slaDueAt    DateTime
+
+  messages TicketMessage[]
+}
+
+model TicketMessage {
+  id           String        @id @default(cuid())
+  ticketId     String
+  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId     String
+  body         String
+  attachmentId String?
+  createdAt    DateTime      @default(now())
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  orgId      String?
+  actorId    String?
+  actorName  String?
+  entityType String // RFQ | JOB_ORDER | ASSIGNMENT | SURVEY | REPORT | INVOICE | CUSTOMER | ...
+  entityId   String
+  rfqId      String? // denormalised so the RFQ timeline is one query
+  action     String
+  fromStatus String?
+  toStatus   String?
+  note       String?
+  data       String? // JSON before/after diff
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([rfqId, createdAt])
+  @@index([entityType, entityId])
+  @@index([orgId, createdAt])
+}
